@@ -19,9 +19,7 @@ pub struct HyperClient {
 impl HyperClient {
     /// Create a new default client.
     pub fn new() -> Self {
-        HyperClient {
-            client: Arc::new(Client::builder().build(HttpsConnector::new())),
-        }
+        HyperClient::with_builder_connector(Client::builder(), HttpsConnector::new())
     }
 
     /// Create a new client with custom hyper configs.
