@@ -3,44 +3,44 @@
 use super::{Error, HttpClient, Request, Response};
 use http_types::headers::{HeaderName, HeaderValue};
 use http_types::StatusCode;
-use hyper::body::HttpBody;
+use hyper::body::{Body, HttpBody};
+use hyper::client::{Builder, Client, HttpConnector};
 use hyper_tls::HttpsConnector;
 use std::convert::TryFrom;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// Hyper-based HTTP Client.
 #[derive(Debug)]
-pub struct HyperClient {}
+pub struct HyperClient {
+    client: Arc<Client<HttpsConnector<HttpConnector>, Body>>,
+}
 
 impl HyperClient {
-    /// Create a new client.
-    ///
-    /// There is no specific benefit to reusing instances of this client.
+    /// Create a new default client.
     pub fn new() -> Self {
-        HyperClient {}
+        HyperClient {
+            client: Arc::new(Client::builder().build(HttpsConnector::new())),
+        }
+    }
+
+    /// Create a new client with custom hyper configs.
+    pub fn with_builder_connector(
+        builder: Builder,
+        connector: HttpsConnector<HttpConnector>,
+    ) -> Self {
+        HyperClient {
+            client: Arc::new(builder.build(connector)),
+        }
     }
 }
 
 impl HttpClient for HyperClient {
     fn send(&self, req: Request) -> futures::future::BoxFuture<'static, Result<Response, Error>> {
+        let client = self.client.clone();
         Box::pin(async move {
             let req = HyperHttpRequest::try_from(req).await?.into_inner();
-            // UNWRAP: Scheme guaranteed to be "http" or "https" as part of conversion
-            let scheme = req.uri().scheme_str().unwrap();
-
-            let response = match scheme {
-                "http" => {
-                    let client = hyper::Client::builder().build_http::<hyper::Body>();
-                    client.request(req).await
-                }
-                "https" => {
-                    let https = HttpsConnector::new();
-                    let client = hyper::Client::builder().build::<_, hyper::Body>(https);
-                    client.request(req).await
-                }
-                _ => unreachable!(),
-            }?;
-
+            let response = client.request(req).await?;
             let resp = HttpTypesResponse::try_from(response).await?.into_inner();
             Ok(resp)
         })
